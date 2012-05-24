@@ -82,10 +82,10 @@ do.
 If RVideo is useful to you, you may also be interested in RMovie, another Ruby
 video library. See http://rmovie.rubyforge.org/ for more.
 
-Finally, watch for Zencoder, a commercial video transcoder built by Slantwise 
-Design. Zencoder uses RVideo for its video processing, but adds file queuing,  
+Finally, watch for Spinoza, a commercial video transcoder built by Slantwise 
+Design. Spinoza uses RVideo for its video processing, but adds file queuing,  
 distributed transcoding, a web-based transcoder dashboard, and more. See 
-http://zencoder.tv or http://slantwisedesign.com for more.
+http://spinoza.tv or http://slantwisedesign.com for more.
 
 Copyright (c) 2007 Jonathan Dahl and Slantwise Design. Released under the MIT 
 license.

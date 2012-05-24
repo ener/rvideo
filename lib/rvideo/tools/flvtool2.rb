@@ -1,4 +1,3 @@
-# Warning:  If you're dealing with large files, you should consider using yamdi instead.
 module RVideo
   module Tools
     class Flvtool2
@@ -31,10 +30,6 @@ module RVideo
           
         if m = /Copyright.*Norman Timmler/i.match(result)
           raise TranscoderError::InvalidCommand, "command printed flvtool2 help text (and presumably didn't execute)"
-        end
-        
-        if m = /ERROR: undefined method .?timestamp.? for nil/.match(result)
-          raise TranscoderError::InvalidFile, "Output file was empty (presumably)"
         end
         
         if m = /\A---(.*)...\Z/m.match(result)

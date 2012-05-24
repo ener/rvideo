@@ -3,94 +3,36 @@ module RVideo
     class Ffmpeg
       include AbstractTool::InstanceMethods
       
-      attr_reader :frame, :q, :size, :time, :output_bitrate, :video_size, :audio_size, :header_size, :overhead, :psnr, :output_fps
+      attr_reader :frame, :q, :size, :time, :bitrate, :video_size, :audio_size, :header_size, :overhead, :psnr, :fps
       
       # Not sure if this is needed anymore...
       def tool_command
         'ffmpeg'
       end
       
-      def format_fps(params={})
-        " -r #{params[:fps]}"
-      end
-      def format_video_quality(params={})
-        bitrate = params[:video_bit_rate].blank? ? nil : params[:video_bit_rate]
-        factor = (params[:scale][:width].to_f * params[:scale][:height].to_f * params[:fps].to_f)
-        case params[:video_quality]
-        when 'low'
-          bitrate ||= (factor / 12000).to_i
-          " -v #{bitrate}k -crf 30 -me zero -subq 1 -refs 1 -threads auto "
-        when 'medium'
-          bitrate ||= (factor / 9000).to_i
-          " -v #{bitrate}k -crf 22 -flags +loop -cmp +sad -partitions +parti4x4+partp8x8+partb8x8 -flags2 +mixed_refs -me hex -subq 3 -trellis 1 -refs 2 -bf 3 -b_strategy 1 -coder 1 -me_range 16 -g 250"
-        when 'high'
-          bitrate ||= (factor / 3600).to_i
-          " -v #{bitrate}k -crf 18 -flags +loop -cmp +sad -partitions +parti4x4+partp8x8+partb8x8 -flags2 +mixed_refs -me full -subq 6 -trellis 1 -refs 3 -bf 3 -b_strategy 1 -coder 1 -me_range 16 -g 250 -keyint_min 25 -sc_threshold 40 -i_qfactor 0.71"
+      #
+      # Return -r and the frame rate of the original file. E.g.:
+      #
+      #   -r 29.97
+      #
+      # If the original frame rate can't be determined, return an empty 
+      # string.
+      def original_fps
+        inspect_original if @original.nil?
+        if @original.fps
+          "-r #{@original.fps}" 
         else
           ""
         end
-      end  
-      
-      
-      def format_resolution(params={})
-        p = " -s #{params[:scale][:width]}x#{params[:scale][:height]} "
-        if params[:letterbox]
-          plr = ((params[:letterbox][:width] - params[:scale][:width]) / 2).to_i
-          ptb = ((params[:letterbox][:height] - params[:scale][:height]) / 2).to_i
-          p += " -padtop #{ptb} -padbottom #{ptb} -padleft #{plr} -padright #{plr} "
-        end
-        p
       end
-
-      def format_audio_channels(params={})
-        " -ac #{params[:channels]}"
-      end
-      
-      def format_audio_bit_rate(params={})
-        " -ab #{params[:bit_rate]}k"
-      end
-      
-      def format_audio_sample_rate(params={})
-        " -ar #{params[:sample_rate]}"
-      end
-      
       
       private
-      
-      # Turns the temp log file into a useful string, from which we can parse the 
-      # transcoding results.
-      # These log files can be enormous, so pulling the whole thing into memory is not an 
-      # option.
-      def populate_raw_result(temp_file_name)
-        @raw_result = ""
-        
-        # Is the log file exceptionally long?  It's really not a big deal to pull in a thousand lines or so
-        # into memory.  It's the gigantic files that cause problems.  If the files isn't too large, 
-        # just pull it in.
-        line_count = 0
-        if m = /^\s*(\d+)/.match(`wc -l #{temp_file_name}`)
-          line_count = m[1].to_i
-        end
-        
-        if line_count > 500
-          # Find the message indicating that the command is actually running.
-          running_string = "Press .* to stop encoding"
-          @raw_result << `grep "#{running_string}" #{temp_file_name}`
-        end
-
-        # Append the bottom of the log file, where the interesting bits live.
-        @raw_result << `tail -n 500 #{temp_file_name}`
-      end
       
       def parse_result(result)
         
         if m = /Unable for find a suitable output format for.*$/.match(result)
           raise TranscoderError::InvalidCommand, m[0]
         end
-        
-        if m = /Unknown codec \'(.*)\'/.match(result)
-          raise TranscoderError::InvalidFile, "Codec #{m[1]} not supported by this build of ffmpeg"
-       end
         
         if m = /could not find codec parameters/.match(result)
           raise TranscoderError::InvalidFile, "Codec not supported by this build of ffmpeg"
@@ -110,28 +52,6 @@ module RVideo
         
         if result =~ /usage: ffmpeg/
           raise TranscoderError::InvalidCommand, "must pass a command to ffmpeg"
-        end
-        
-        if result =~ /Output file does not contain.*stream/
-          raise TranscoderError, "Output file does not contain any video or audio streams."
-        end
-        
-        if m = /Unsupported codec.*id=(.*)\).*for input stream\s*(.*)\s*/.match(result) 
-          inspect_original if @original.nil?
-          case m[2]
-          when @original.audio_stream_id
-            codec_type = "audio"
-            codec = @original.audio_codec
-          when @original.video_stream_id
-            codec_type = "video"
-            codec = @original.video_codec
-          else
-            codec_type = "video or audio"
-            codec = "unknown"
-          end
-          
-          raise TranscoderError::InvalidFile, "Unsupported #{codec_type} codec: #{codec} (id=#{m[1]}, stream=#{m[2]})"
-          #raise TranscoderError, "Codec #{m[1]} not supported (in stream #{m[2]})"
         end
         
         # Could not open './spec/../config/../tmp/processed/1/kites-1.avi'
@@ -177,11 +97,11 @@ module RVideo
         if details =~ /video:/ 
           #success = /^frame=\s*(\S*)\s*q=(\S*).*L.*size=\s*(\S*)\s*time=\s*(\S*)\s*bitrate=\s*(\S*)\s*/m.match(details)
           @frame = sanitary_match(/frame=\s*(\S*)/, details)
-          @output_fps = sanitary_match(/fps=\s*(\S*)/, details)
+          @fps = sanitary_match(/fps=\s*(\S*)/, details)
           @q = sanitary_match(/\s+q=\s*(\S*)/, details)
           @size = sanitary_match(/size=\s*(\S*)/, details)
           @time = sanitary_match(/time=\s*(\S*)/, details)
-          @output_bitrate = sanitary_match(/bitrate=\s*(\S*)/, details)
+          @bitrate = sanitary_match(/bitrate=\s*(\S*)/, details)
           
           @video_size = /video:\s*(\S*)/.match(details)[1]
           @audio_size = /audio:\s*(\S*)/.match(details)[1]

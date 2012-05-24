@@ -1,29 +1,3 @@
-== 0.9.5 2008-09-09
-Note:
-* Moving hosting to GitHub.
-  http://github.com/zencoder/rvideo/tree
-
-2 major enhancements:
-* Large files, or some tools, would dump out so much output that it could run a server out of memory.
-  Changed the way that output is parsed.  Instead of pulling it all into memory, the log file is sent to 
-  disk, and then post-processed.
-* Added support for yamdi (http://yamdi.sourceforge.net/) for FLV metadata injection.  This is much faster 
-  than flvtool2 on huge files, and uses less memory as well.
-
-
-== 0.9.4 2007-12-12
-
-3 major enhancements:
-* Changed transcoder interface. The preferred interface is now to pass the input file to RVideo::Transcoder.new. This allows you to create multiple output files from the same Transcoder object, and inspects the input file metadata before the job is transcoded.
-* Added screengrab functionality to the Inspector class. Fire up an inspector instance on a file, and you can take one or more screenshots through inspected_file.capture_frame("50%").
-* Added resolution/aspect support. Pass :width and :height parameters to a Transcoder instance, and include $resolution$ or $aspect_ratio$ in the recipe. 
-
-4 minor enhancements:
-* Remove old/unnecessary files and features
-* Three additional ffmpeg results: unsupported codec and no output streams
-* One additional flvtool2 result: empty input file
-* Check that input file exists earlier in the transcoding process
-
 == 0.9.3 2007-10-30
 
 One minor enhancement:

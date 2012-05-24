@@ -131,6 +131,12 @@ end
 #require 'spec/rake/spectask'
 require File.dirname(__FILE__) + '/lib/rvideo'
 
+desc "Creates a HTML report using the recipes in report/recipes and files in report/input_files" 
+task(:report) do
+  require 'rvideo/reporter'
+  RVideo::Reporter.run
+end
+
 namespace :spec do
   desc "Run Unit Specs"
   Spec::Rake::SpecTask.new("units") do |t| 
@@ -165,12 +171,12 @@ end
 
 def transcode_single_job(recipe, input_file)
   puts "Transcoding #{File.basename(input_file)} to #{recipe}"
-  r = YAML::load(File.open(File.dirname(__FILE__) + '/test/recipes.yml'))[recipe]
-  transcoder = RVideo::Transcoder.new(input_file)
+  r = YAML::load(File.open(File.dirname(__FILE__) + '/spec/fixtures/recipes.yml'))[recipe]
+  transcoder = RVideo::Transcoder.new
   output_file = "#{TEMP_PATH}/#{File.basename(input_file, ".*")}-#{recipe}.#{r['extension']}"
   FileUtils.mkdir_p(File.dirname(output_file))
   begin
-    transcoder.execute(r['command'], {:output_file => output_file}.merge(r))
+    transcoder.execute(r['command'], {:input_file => input_file, :output_file => output_file, :resolution => "320x240"})
     puts "Finished #{File.basename(output_file)} in #{transcoder.total_time}"
   rescue StandardError => e
     puts "Error transcoding #{File.basename(output_file)} - #{e.class} (#{e.message}\n#{e.backtrace})"

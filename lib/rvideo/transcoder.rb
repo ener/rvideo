@@ -1,12 +1,12 @@
 module RVideo # :nodoc:
   class Transcoder
     
-    attr_reader :executed_commands, :processed, :errors, :warnings, :total_time
+    attr_reader :executed_commands, :original, :processed, :errors, :warnings, :metadata, :total_time
     
     #
     # To transcode a video, initialize a Transcoder object:
     #
-    #   transcoder = RVideo::Transcoder.new("/path/to/input.mov")
+    #   transcoder = RVideo::Transcoder.new
     #
     # Then pass a recipe and valid options to the execute method
     #
@@ -14,8 +14,8 @@ module RVideo # :nodoc:
     #   recipe += " $resolution$ -y $output_file$"
     #   recipe += "\nflvtool2 -U $output_file$"
     #   begin
-    #     transcoder.execute(recipe, {:output_file => "/path/to/output.flv", 
-    #       :resolution => "640x360"})
+    #     transcoder.execute(recipe, {:input_file => "/path/to/input.mp4",
+    #       :output_file => "/path/to/output.flv", :resolution => "640x360"})
     #   rescue TranscoderError => e
     #     puts "Unable to transcode file: #{e.class} - #{e.message}"
     #   end
@@ -32,18 +32,10 @@ module RVideo # :nodoc:
     # file is unreadable.
     # 
     
-    def initialize(input_file = nil)
-      # Allow a nil input_file for backwards compatibility. (Change at 1.0?)
-      check_input_file(input_file)
-      
-      @input_file = input_file
+    def initialize
       @executed_commands = []
       @errors = []
       @warnings = []
-    end
-    
-    def original
-      @original ||= Inspector.new(:file => @input_file)
     end
     
     #
@@ -75,9 +67,9 @@ module RVideo # :nodoc:
     #   recipe += "-s $resolution$ -y $output_file$"
     #   recipe += "\nflvtool2 -U $output_file$"
     #
-    #   transcoder = RVideo::Transcoder.new("/path/to/input.mov")
     #   begin
-    #     transcoder.execute(recipe, {:output_file => "/path/to/output.flv", :resolution => "320x240"})
+    #     transcoder.execute(recipe, {:input_file => "/path/to/input.mp4",
+    #       :output_file => "/path/to/output.flv", :resolution => "320x240"})
     #   rescue TranscoderError => e
     #     puts "Unable to transcode file: #{e.class} - #{e.message}"
     #   end
@@ -85,13 +77,15 @@ module RVideo # :nodoc:
     
     def execute(task, options = {})
       t1 = Time.now
-      
-      if @input_file.nil?
-        @input_file = options[:input_file]
-      end
-      
       Transcoder.logger.info("\nNew transcoder job\n================\nTask: #{task}\nOptions: #{options.inspect}")
-      parse_and_execute(task, options)      
+      @original = Inspector.new(:file => options[:input_file])
+      @metadata = @original.raw_response
+      
+      if task.class == String
+        parse_and_execute(task, options)
+      else
+        raise ArgumentError, "first argument must be a recipe string, but got a #{task.class.to_s} (#{task})"
+      end
       @processed = Inspector.new(:file => options[:output_file])
       result = check_integrity
       Transcoder.logger.info("\nFinished task. Total errors: #{@errors.size}\n")
@@ -101,35 +95,25 @@ module RVideo # :nodoc:
       raise e
     rescue Exception => e
       Transcoder.logger.error("[ERROR] Unhandled RVideo exception: #{e.class} - #{e.message}\n#{e.backtrace}")
-      raise TranscoderError::UnknownError, "Unexpected RVideo error: #{e.message} (#{e.class})"
+      raise TranscoderError::UnknownError, "#{e.class} - #{e.message}"
     end
-        
-    private
     
-    def check_input_file(input_file)
-      if input_file and !FileTest.exist?(input_file.gsub("\"",""))
-        raise TranscoderError::InputFileNotFound, "File not found (#{input_file})"
-      end
-    end
+    private
     
     def check_integrity
       precision = 1.1
       if @processed.invalid?
         @errors << "Output file invalid"
-      elsif (@processed.duration >= (original.duration * precision) or @processed.duration <= (original.duration / precision))
-        @errors << "Original file has a duration of #{original.duration}, but processed file has a duration of #{@processed.duration}"
+      elsif (@processed.duration >= (@original.duration * precision) or @processed.duration <= (@original.duration / precision))
+        @errors << "Original file has a duration of #{@original.duration}, but processed file has a duration of #{@processed.duration}"
       end
       return @errors.size == 0
     end
     
     def parse_and_execute(task, options = {})
-      raise TranscoderError::ParameterError, "Expected a recipe class (as a string), but got a #{task.class.to_s} (#{task})" unless task.is_a? String
-      options = options.merge(:input_file => @input_file)
-      
       commands = task.split("\n").compact
       commands.each do |c|
         tool = Tools::AbstractTool.assign(c, options)
-        tool.original = @original
         tool.execute
         executed_commands << tool
       end

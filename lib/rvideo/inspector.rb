@@ -44,7 +44,7 @@ module RVideo # :nodoc:
         @filename = File.basename(file)
         @path = File.dirname(file)
         @full_filename = file
-        raise TranscoderError::InputFileNotFound, "File not found (#{file})" unless FileTest.exist?(file.gsub("\"",""))
+        raise ArgumentError, "File not found (#{file})" unless FileTest.exist?(file.gsub("\"",""))
         @raw_response = `#{@ffmpeg_binary} -i #{@full_filename} 2>&1`
       else
         raise ArgumentError, "Must supply either an input file or a pregenerated response" if options[:raw_response].nil? and file.nil?
@@ -54,8 +54,7 @@ module RVideo # :nodoc:
       
       if /Unknown format/i.match(@raw_response) || metadata.nil?
         @unknown_format = true
-      elsif /Duration: N\/A/im.match(@raw_response)
-#      elsif /Duration: N\/A|bitrate: N\/A/im.match(@raw_response)
+      elsif /Duration: N\/A|bitrate: N\/A/im.match(@raw_response)
         @unreadable_file = true
         @raw_metadata = metadata[1] # in this case, we can at least still get the container type
       else
@@ -131,64 +130,6 @@ module RVideo # :nodoc:
       end
     end     
     
-    #
-    # Take a screengrab of a movie. Requires an input file and a time parameter, and optionally takes an output filename. If no output filename is specfied, constructs one.
-    #
-    # Three types of time parameters are accepted - percentage (e.g. 3%), time in seconds (e.g. 60 seconds), and raw frame (e.g. 37). Will raise an exception if the time in seconds or the frame are out of the bounds of the input file.
-    #
-    # Types:
-    #   37s (37 seconds)
-    #   37f (frame 37)
-    #   37% (37 percent)
-    #   37  (default to seconds)
-    #
-    # If a time is outside of the duration of the file, it will choose a frame at the 99% mark.
-    #
-    # Example:
-    #
-    #   t = RVideo::Transcoder.new('path/to/input_file.mp4')
-    #   t.capture_frame('10%') # => '/path/to/screenshot/input-10p.jpg'
-    #
-    
-    def capture_frame(timecode, output_file = nil)
-      t = calculate_time(timecode)
-      unless output_file
-        output_file = "#{TEMP_PATH}/#{File.basename(@full_filename, ".*")}-#{timecode.gsub("%","p")}.jpg"
-      end
-      # do the work
-      # mplayer $input_file$ -ss $start_time$ -frames 1 -vo jpeg -o $output_file$
-      # ffmpeg -i $input_file$ -v nopb -ss $start_time$ -b $bitrate$ -an -vframes 1 -y $output_file$
-      command = "ffmpeg -i #{@full_filename} -ss #{t} -t 00:00:01 -r 1 -vframes 1 -f image2 #{output_file}"
-      Transcoder.logger.info("\nCreating Screenshot: #{command}\n")
-      frame_result = `#{command} 2>&1`
-      Transcoder.logger.info("\nScreenshot results: #{frame_result}")
-      output_file
-    end
-    
-    def calculate_time(timecode)
-      m = /\A([0-9\.\,]*)(s|f|%)?\Z/.match(timecode)
-      if m.nil? or m[1].nil? or m[1].empty?
-        raise TranscoderError::ParameterError, "Invalid timecode for frame capture: #{timecode}. Must be a number, optionally followed by s, f, or %."
-      end
-      
-      case m[2]
-      when "s", nil
-        t = m[1].to_f
-      when "f"
-        t = m[1].to_f / fps.to_f
-      when "%"
-        # milliseconds / 1000 * percent / 100 
-        t = (duration.to_i / 1000.0) * (m[1].to_f / 100.0)
-      else
-        raise TranscoderError::ParameterError, "Invalid timecode for frame capture: #{timecode}. Must be a number, optionally followed by s, f, or p."
-      end
-      
-      if (t * 1000) > duration
-        calculate_time("99%")
-      else
-        t
-      end
-    end
     
     #
     # Returns the version of ffmpeg used, In practice, this may or may not be 
@@ -322,7 +263,7 @@ module RVideo # :nodoc:
       bitrate_match[2]
     end
     
-    def audio_bit_rate # :nodoc:
+    def audio_bitrate # :nodoc:
       nil
     end
     
@@ -511,7 +452,7 @@ module RVideo # :nodoc:
     def fps
       return nil unless video?
       
-      /([0-9\.]+) (fps|tb)/.match(video_stream)[1]
+      /([0-9\.]+) fps/.match(video_stream)[1]
     end
     
     private
